@@ -102,16 +102,20 @@ def draw_asset_states(states):
     return res
 
 
-def draw_module_state(name, state6, state12):
-    header = '{} is {}6/{}12'.format(
+def draw_module_state(name, state3, state6, state9, state12):
+    header = '{} is {}3/{}6/{}9/{}12'.format(
         name.upper(),
+        _sign(state3.positive),
         _sign(state6.positive),
+        _sign(state9.positive),
         _sign(state12.positive),
     )
 
-    print("{}\n 6 month  : {}\n 12 months : {}".format(
+    print("{}\n 3m: {}\n 6m: {}\n 9m: {}\n 12m: {}\n".format(
         header,
+        '; '.join(draw_asset_states(state3.states)),
         '; '.join(draw_asset_states(state6.states)),
+        '; '.join(draw_asset_states(state9.states)),
         '; '.join(draw_asset_states(state12.states)),
     ))
 
@@ -120,7 +124,15 @@ def do_suggest(conf, db_manager):
     modules = conf['modules']
 
     states12 = get_modules_states(db_manager, modules, 12)
+    states9 = get_modules_states(db_manager, modules, 9)
     states6 = get_modules_states(db_manager, modules, 6)
+    states3 = get_modules_states(db_manager, modules, 3)
 
     for name in sorted(modules.keys()):
-        draw_module_state(name, states6[name], states12[name])
+        draw_module_state(
+            name,
+            states3[name],
+            states6[name],
+            states9[name],
+            states12[name],
+        )
