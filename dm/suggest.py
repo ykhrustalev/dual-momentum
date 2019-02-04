@@ -1,4 +1,7 @@
 from collections import namedtuple
+from datetime import date
+
+from dateutil.relativedelta import relativedelta
 
 Price = namedtuple('Price', ['day', 'price'])
 
@@ -8,13 +11,29 @@ AssetState = namedtuple('Status', ['ticker', 'calculated', 'ratio',
 ModuleState = namedtuple('ModuleState', ['name', 'positive', 'states'])
 
 
+def assert_state(prices):
+    first_day = prices[0].day
+    td = date.today()
+
+    if td == first_day:
+        return
+
+    previous_month_end = td.replace(day=1) - relativedelta(days=1)
+    if first_day == previous_month_end:
+        return
+
+    assert False, "insufficient data, fd={}, td={}".format(first_day, td)
+
+
 def get_asset_state(db_manager, ticker, months):
     prices = fetch_ticker_monthly(db_manager, ticker)
     if len(prices) < months:
         return AssetState(ticker, False, 0, False)
 
-    p0 = prices[-months].price
-    p1 = prices[-1].price
+    assert_state(prices)
+
+    p0 = prices[months - 1].price
+    p1 = prices[0].price
     ratio = 100.0 * (p0 - p1) / p0
 
     return AssetState(ticker, True, ratio, False)
