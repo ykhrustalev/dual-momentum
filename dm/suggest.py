@@ -11,52 +11,46 @@ AssetState = namedtuple('Status', ['ticker', 'calculated', 'ratio',
 ModuleState = namedtuple('ModuleState', ['name', 'positive', 'states'])
 
 
-def assert_state(prices):
-    first_day = prices[0].day
-    td = date.today()
-
-    if td == first_day:
-        return
-
-    previous_month_end = td.replace(day=1) - relativedelta(days=1)
-    if first_day == previous_month_end:
-        return
-
-    assert False, "insufficient data, fd={}, td={}".format(first_day, td)
+class NoData(Exception):
+    pass
 
 
 def get_asset_state(db_manager, ticker, months):
-    prices = fetch_ticker_monthly(db_manager, ticker)
-    if len(prices) < months:
+    try:
+        return _get_asset_state(db_manager, ticker, months)
+    except NoData:
         return AssetState(ticker, False, 0, False)
 
-    assert_state(prices)
 
-    p0 = prices[months - 1].price
-    p1 = prices[0].price
-    ratio = 100.0 * (p0 - p1) / p0
+def _get_asset_state(db_manager, ticker, months):
+    end = date.today()
+    start = end - relativedelta(months=months)
+
+    item0 = fetch_ticker_on_date(db_manager, ticker, start)
+    item1 = fetch_ticker_on_date(db_manager, ticker, end)
+
+    p0 = item0.price
+    p1 = item1.price
+    ratio = 100.0 * (p1 - p0) / p0
 
     return AssetState(ticker, True, ratio, False)
 
 
-def fetch_ticker_monthly(db_manager, ticker):
+def fetch_ticker_on_date(db_manager, ticker, dt):
     with db_manager.connect() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-select latest_day as day,
-       p.close    as price
-from (
-       select max(day) latest_day, identifier
-       from prices
-       where identifier = %s
-       group by date_trunc('month', day), identifier
-     ) days
-       join prices p
-            on p.day = days.latest_day and p.identifier = days.identifier
-order by latest_day desc
-""", (ticker,))
-            rows = cur.fetchall()
-            return [Price(x[0], x[1]) for x in rows]
+select p.day, p.close
+from prices p
+where p.identifier = %s 
+and p.day between (%s + '-3 days'::interval) and (%s + '3 days'::interval)
+order by p.day desc  
+""", (ticker, dt, dt))
+            row = cur.fetchone()
+            if not row:
+                raise NoData("no data for {} on {}".format(ticker, dt))
+
+            return Price(row[0], row[1])
 
 
 def get_reference(db_manager, modules, months):
@@ -71,9 +65,11 @@ def get_module_state(name, states, default_state):
     states = sorted(states, key=lambda x: -x.ratio)
 
     def prepare(state):
-        is_positive = state.ratio > default_state.ratio and state.ratio > 0
         return AssetState(
-            state.ticker, state.calculated, state.ratio, is_positive
+            state.ticker,
+            state.calculated,
+            state.ratio,
+            state.ratio > default_state.ratio and state.ratio > 0
         )
 
     states = [prepare(x) for x in states]
