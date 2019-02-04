@@ -1,6 +1,5 @@
 create table prices
 (
-  id         bigserial primary key,
   identifier text not null,
   day        date not null,
   open       int  not null,

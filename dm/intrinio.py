@@ -14,9 +14,8 @@ def get_session(api_key):
 
 def get_range(months):
     today = date.today()
-    end = date(today.year, today.month, 1) - relativedelta(days=1)
-    start = end - relativedelta(months=months)
-    return start, end
+    start = today - relativedelta(months=months + 1)
+    return start, today
 
 
 PriceItem = namedtuple('PriceItem', ['day', 'open', 'close'])
@@ -31,7 +30,7 @@ def parse_item(item):
 
 
 class Client:
-    DEFAULT_URL = 'https://api.intrinio.com'
+    DEFAULT_URL = 'https://api-v2.intrinio.com'
 
     def __init__(self, session, base_url=DEFAULT_URL):
         self.__session = session
@@ -43,19 +42,29 @@ class Client:
     def get_monthly_prices(self, ticker, months):
         start, end = get_range(months)
 
-        url = self.__url('/prices')
-        query = {"identifier": ticker,
-                 "start_date": start.isoformat(),
+        url = self.__url('/securities/{}/prices'.format(ticker))
+        query = {"start_date": start.isoformat(),
                  "end_date": end.isoformat(),
-                 "frequency": "monthly"}
-        r = self.__session.get(url, params=query)
+                 "frequency": "daily"}
+
+        return list(iterate(self.__session, url, query))
+
+
+def iterate(session, url, query):
+    while True:
+        r = session.get(url, params=query)
         r.raise_for_status()
-
         data = r.json()
-        assert data['total_pages'] == 1
 
-        items = data['data']
-        return [parse_item(item) for item in items]
+        items = data['stock_prices']
+        for item in items:
+            yield parse_item(item)
+
+        next_page = data.get('next_page')
+        if next_page:
+            query['next_page'] = next_page
+        else:
+            return
 
 
 def get_client(api_key):
